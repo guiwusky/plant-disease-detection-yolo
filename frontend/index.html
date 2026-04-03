@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧农业 - 植物病害检测系统</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #10B981;
+            width: 40px;
+            height: 40px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+        }
+
+        /* Safari */
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="bg-green-600 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"></path>
+                    </svg>
+                    <span class="text-white font-bold text-xl ml-2 tracking-wide">基于YOLO的智慧农业植物病害检测</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl w-full mx-auto py-8 px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row gap-8">
+        
+        <!-- Left Column: Upload -->
+        <div class="w-full md:w-1/3 flex flex-col gap-6">
+            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                <h2 class="text-lg font-semibold mb-4 border-b pb-2 text-green-700">图片上传</h2>
+                
+                <div class="flex items-center justify-center w-full">
+                    <label id="dropzone-label" for="dropzone-file" class="flex flex-col items-center justify-center w-full h-64 border-2 border-green-300 border-dashed rounded-lg cursor-pointer bg-green-50 hover:bg-green-100 transition-colors">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg aria-hidden="true" class="w-10 h-10 mb-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <p class="mb-2 text-sm text-gray-600"><span class="font-semibold text-green-600">点击上传</span> 或拖拽图片至此处</p>
+                            <p class="text-xs text-gray-500">支持 PNG, JPG, JPEG 格式</p>
+                        </div>
+                        <input id="dropzone-file" type="file" class="hidden" accept="image/png, image/jpeg, image/jpg" onchange="previewImage(event)" />
+                    </label>
+                </div>
+                
+                <div class="mt-4 flex justify-between items-center hidden" id="action-buttons">
+                    <button onclick="resetUpload()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition">重新选择</button>
+                    <button onclick="startDetection()" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition flex items-center shadow-sm">
+                        开始检测
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Result List Panel -->
+            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 flex-grow" id="results-panel" style="display: none;">
+                <h2 class="text-lg font-semibold mb-4 border-b pb-2 text-green-700 flex justify-between">
+                    检测结果分类
+                    <span class="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full" id="detect-count">0 个目标</span>
+                </h2>
+                <ul id="detection-list" class="space-y-3 overflow-y-auto max-h-60 pr-2">
+                    <!-- Dynamic Items will be appended here -->
+                </ul>
+            </div>
+        </div>
+
+        <!-- Right Column: Image Preview and Result -->
+        <div class="w-full md:w-2/3 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative min-h-[500px]">
+            <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
+                <h2 class="text-lg font-semibold text-gray-700">图像预览</h2>
+                <span id="status-badge" class="px-3 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-600">待上传</span>
+            </div>
+            
+            <div class="flex-grow flex items-center justify-center bg-gray-100 p-4 relative">
+                <!-- Placeholder text -->
+                <p id="placeholder-text" class="text-gray-400 text-lg flex items-center">
+                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    暂无图片，请在左侧上传
+                </p>
+
+                <!-- Image Display -->
+                <img id="display-image" src="" alt="预览图" class="max-w-full max-h-[600px] object-contain hidden rounded shadow-sm" />
+
+                <!-- Loading Overlay -->
+                <div id="loading-overlay" class="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center hidden z-10">
+                    <div class="loader mb-4"></div>
+                    <p class="text-green-600 font-medium">模型推理中，请稍候...</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t py-4 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center text-sm text-gray-500">
+            &copy; 2026 智慧农业病害检测系统 | 基于 YOLO 端到端推理
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
