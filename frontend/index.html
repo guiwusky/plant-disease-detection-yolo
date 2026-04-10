@@ -42,11 +42,17 @@
                     <span class="text-white font-bold text-xl ml-2 tracking-wide">基于YOLO的智慧农业植物病害检测</span>
                 </div>
             </div>
+            
+            <!-- Navigation Tabs -->
+            <div class="flex items-center space-x-4 ml-6">
+                <button onclick="switchTab('upload')" id="tab-upload" class="text-white font-medium border-b-2 border-white pb-1 px-2">检测上传</button>
+                <button onclick="switchTab('history')" id="tab-history" class="text-green-100 hover:text-white font-medium border-b-2 border-transparent hover:border-green-200 pb-1 px-2 transition">历史记录</button>
+            </div>
         </div>
     </nav>
 
-    <!-- Main Content -->
-    <main class="flex-grow max-w-7xl w-full mx-auto py-8 px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row gap-8">
+    <!-- Main Content: Upload & Detect (Default) -->
+    <main id="main-upload" class="flex-grow max-w-7xl w-full mx-auto py-8 px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row gap-8">
         
         <!-- Left Column: Upload -->
         <div class="w-full md:w-1/3 flex flex-col gap-6">
@@ -111,6 +117,35 @@
 
     </main>
 
+    <!-- Main Content: History -->
+    <main id="main-history" class="hidden flex-grow max-w-7xl w-full mx-auto py-8 px-4 sm:px-6 lg:px-8 flex flex-col gap-6">
+        <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <h2 class="text-xl font-bold text-gray-800">历史检测记录</h2>
+            <button onclick="loadHistory()" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition flex items-center shadow-sm">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                刷新记录
+            </button>
+        </div>
+
+        <!-- History Grid -->
+        <div id="history-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- History items will be dynamically populated here -->
+        </div>
+        
+        <!-- Loading State for History -->
+        <div id="history-loading" class="hidden flex flex-col items-center justify-center py-12">
+            <div class="loader mb-4"></div>
+            <p class="text-gray-500">加载历史记录中...</p>
+        </div>
+
+        <!-- Empty State for History -->
+        <div id="history-empty" class="hidden flex flex-col items-center justify-center py-16 bg-white rounded-xl shadow-sm border border-gray-100">
+            <svg class="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            <p class="text-lg font-medium text-gray-600">暂无检测记录</p>
+            <p class="text-gray-400 text-sm mt-1">上传并检测图片后，记录将显示在这里。</p>
+        </div>
+    </main>
+
     <!-- Footer -->
     <footer class="bg-white border-t py-4 mt-auto">
         <div class="max-w-7xl mx-auto px-4 text-center text-sm text-gray-500">
@@ -119,5 +154,6 @@
     </footer>
 
     <script src="app.js"></script>
+    <script src="history.js"></script>
 </body>
 </html>

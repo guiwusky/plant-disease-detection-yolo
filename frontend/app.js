@@ -1,7 +1,15 @@
 let selectedFile = null;
+let deviceUserId = localStorage.getItem('deviceUserId');
 
 // Setup Drag and Drop events
 document.addEventListener('DOMContentLoaded', () => {
+    // Generate and store a unique device ID if not exists
+    if (!deviceUserId) {
+        deviceUserId = 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+        localStorage.setItem('deviceUserId', deviceUserId);
+    }
+    console.log("Current Device User ID:", deviceUserId);
+
     const dropzoneLabel = document.getElementById('dropzone-label');
     const fileInput = document.getElementById('dropzone-file');
 
@@ -94,6 +102,7 @@ async function startDetection() {
 
     const formData = new FormData();
     formData.append('file', selectedFile);
+    formData.append('user_id', deviceUserId);
 
     // Show loading UI
     document.getElementById('loading-overlay').classList.remove('hidden');
@@ -101,7 +110,12 @@ async function startDetection() {
     document.getElementById('status-badge').className = 'px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700';
 
     try {
-        const response = await fetch('/api/detect', {
+        // Detect if running locally without Nginx proxy
+        const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+            ? 'http://127.0.0.1:8000/detect' 
+            : '/api/detect';
+            
+        const response = await fetch(apiUrl, {
             method: 'POST',
             body: formData
         });
@@ -119,6 +133,11 @@ async function startDetection() {
             // Update UI
             document.getElementById('status-badge').innerText = '检测完成';
             document.getElementById('status-badge').className = 'px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700';
+            
+            // If the backend also returned URLs (we display base64 for speed but save urls)
+            if (data.result_url) {
+                console.log("Record saved with ID:", data.record_id);
+            }
             
             // Populate Results
             populateResults(data.detections);

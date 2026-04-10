@@ -1,16 +1,39 @@
 import io
 import base64
 import os
-from fastapi import FastAPI, File, UploadFile, HTTPException
+import json
+import uuid
+from datetime import datetime
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 from PIL import Image
 import cv2
 import numpy as np
 from ultralytics import YOLO
 
+# Import database configuration and models
+try:
+    from database import get_db, SessionLocal
+    from models import DetectionRecord
+    DB_AVAILABLE = SessionLocal is not None
+except ImportError:
+    DB_AVAILABLE = False
+    print("Warning: Database modules not found.")
+
 app = FastAPI(title="YOLO Plant Disease Detection API")
+
+# Ensure upload directories exist
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+RESULT_DIR = os.path.join(os.path.dirname(__file__), "results")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(RESULT_DIR, exist_ok=True)
+
+# Mount static files to serve images via HTTP
+app.mount("/static/uploads", StaticFiles(directory=UPLOAD_DIR), name="static_uploads")
+app.mount("/static/results", StaticFiles(directory=RESULT_DIR), name="static_results")
 
 # Allow CORS for frontend integration
 app.add_middleware(
@@ -43,7 +66,11 @@ def read_root():
     return {"message": "Plant Disease Detection API is running. Use /detect endpoint for inference."}
 
 @app.post("/detect")
-async def detect_disease(file: UploadFile = File(...)):
+async def detect_disease(
+    file: UploadFile = File(...),
+    user_id: str = Form("anonymous"),
+    db: Session = Depends(get_db) if DB_AVAILABLE else None
+):
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded on server.")
     
@@ -59,11 +86,24 @@ async def detect_disease(file: UploadFile = File(...)):
         # YOLOv8 handles RGB/BGR internally, but OpenCV uses BGR
         image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
+        # Generate unique filenames based on timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        original_filename = f"{timestamp}_{unique_id}_original.jpg"
+        result_filename = f"{timestamp}_{unique_id}_result.jpg"
+        
+        # Save original image
+        original_path = os.path.join(UPLOAD_DIR, original_filename)
+        image.save(original_path, format="JPEG")
+
         # Run inference
         results = model.predict(source=image_bgr, conf=0.25)
         
         # Parse results
         detections = []
+        highest_conf = 0.0
+        primary_disease = "None"
+        
         for result in results:
             boxes = result.boxes
             for box in boxes:
@@ -72,6 +112,11 @@ async def detect_disease(file: UploadFile = File(...)):
                 c = box.cls[0].item()
                 conf = box.conf[0].item()
                 class_name = model.names[int(c)]
+                
+                # Keep track of the most confident detection
+                if conf > highest_conf:
+                    highest_conf = conf
+                    primary_disease = class_name
                 
                 detections.append({
                     "box": [round(x, 2) for x in b],
@@ -87,19 +132,84 @@ async def detect_disease(file: UploadFile = File(...)):
         res_rgb = cv2.cvtColor(res_plotted, cv2.COLOR_BGR2RGB)
         res_img_pil = Image.fromarray(res_rgb)
         
-        # Convert to Base64
+        # Save result image
+        result_path = os.path.join(RESULT_DIR, result_filename)
+        res_img_pil.save(result_path, format="JPEG")
+        
+        # Convert to Base64 for immediate frontend display
         buffered = io.BytesIO()
         res_img_pil.save(buffered, format="JPEG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
+        # Save to database if available
+        record_id = None
+        if db is not None:
+            try:
+                db_record = DetectionRecord(
+                    user_id=user_id,
+                    original_image_path=f"/static/uploads/{original_filename}",
+                    result_image_path=f"/static/results/{result_filename}",
+                    detections_json=json.dumps(detections),
+                    highest_confidence=f"{highest_conf:.4f}" if detections else None,
+                    primary_disease=primary_disease
+                )
+                db.add(db_record)
+                db.commit()
+                db.refresh(db_record)
+                record_id = db_record.id
+                print(f"Saved record {record_id} to database")
+            except Exception as db_err:
+                print(f"Database error: {db_err}")
+                db.rollback()
+
         return JSONResponse(content={
             "success": True,
+            "record_id": record_id,
+            "primary_disease": primary_disease,
             "detections": detections,
-            "image_base64": img_str
+            "image_base64": img_str,
+            "original_url": f"/static/uploads/{original_filename}",
+            "result_url": f"/static/results/{result_filename}"
         })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
+@app.get("/history")
+def get_history(
+    user_id: str = "anonymous",
+    limit: int = 20, 
+    db: Session = Depends(get_db) if DB_AVAILABLE else None
+):
+    """Retrieve history of past detections for a specific user"""
+    if db is None:
+        return JSONResponse(content={"success": False, "message": "Database not configured"})
+        
+    try:
+        # Filter by user_id and order by newest first
+        records = db.query(DetectionRecord)\
+                    .filter(DetectionRecord.user_id == user_id)\
+                    .order_by(DetectionRecord.created_at.desc())\
+                    .limit(limit).all()
+        
+        history_list = []
+        for r in records:
+            history_list.append({
+                "id": r.id,
+                "date": r.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "primary_disease": r.primary_disease,
+                "confidence": r.highest_confidence,
+                "original_url": r.original_image_path,
+                "result_url": r.result_image_path,
+                "detections": json.loads(r.detections_json) if r.detections_json else []
+            })
+            
+        return JSONResponse(content={"success": True, "history": history_list})
+    except Exception as e:
+        print(f"Error fetching history: {e}")
+        return JSONResponse(content={"success": False, "message": str(e)})
 
 if __name__ == "__main__":
     import uvicorn
