@@ -12,7 +12,36 @@ from sqlalchemy.orm import Session
 from PIL import Image
 import cv2
 import numpy as np
+import torch
+import torch.nn as nn
 from ultralytics import YOLO
+from ultralytics.nn.modules import Conv
+
+# TimmBackbone class - matches training code
+class TimmBackbone(nn.Module):
+    def __init__(self, model_name, pretrained=True, out_indices=(2, 3, 4)):
+        super().__init__()
+        import timm
+        self.model = timm.create_model(model_name, features_only=True,
+                                      pretrained=pretrained, out_indices=out_indices)
+        self.out_channels = self.model.feature_info.channels()
+
+    def forward(self, x):
+        return self.model(x)
+
+# TimmExtract class - matches training code
+class TimmExtract(nn.Module):
+    def __init__(self, index):
+        super().__init__()
+        self.index = index
+
+    def forward(self, x):
+        return x[self.index]
+
+# Register custom classes to ultralytics.nn.tasks module BEFORE loading model
+import ultralytics.nn.tasks
+ultralytics.nn.tasks.TimmBackbone = TimmBackbone
+ultralytics.nn.tasks.TimmExtract = TimmExtract
 
 # Import database configuration and models
 try:
@@ -181,6 +210,7 @@ async def detect_disease(
 def get_history(
     user_id: str = "anonymous",
     limit: int = 20, 
+    offset: int = 0,
     db: Session = Depends(get_db) if DB_AVAILABLE else None
 ):
     """Retrieve history of past detections for a specific user"""
@@ -188,11 +218,15 @@ def get_history(
         return JSONResponse(content={"success": False, "message": "Database not configured"})
         
     try:
+        # Get total count
+        total = db.query(DetectionRecord).filter(DetectionRecord.user_id == user_id).count()
+        
         # Filter by user_id and order by newest first
         records = db.query(DetectionRecord)\
                     .filter(DetectionRecord.user_id == user_id)\
                     .order_by(DetectionRecord.created_at.desc())\
-                    .limit(limit).all()
+                    .limit(limit)\
+                    .offset(offset).all()
         
         history_list = []
         for r in records:
@@ -206,7 +240,7 @@ def get_history(
                 "detections": json.loads(r.detections_json) if r.detections_json else []
             })
             
-        return JSONResponse(content={"success": True, "history": history_list})
+        return JSONResponse(content={"success": True, "total": total, "history": history_list})
     except Exception as e:
         print(f"Error fetching history: {e}")
         return JSONResponse(content={"success": False, "message": str(e)})

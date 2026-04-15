@@ -32,6 +32,19 @@ runs/
 *.onnx
 *.engine
 
+# Uploads and results (user generated content)
+backend/uploads/
+backend/results/
+!backend/results/.gitkeep
+
+# Database files
+*.db
+*.db-journal
+
+# Test files
+test_*.py
+*_test.py
+
 # System files
 .DS_Store
 Thumbs.db

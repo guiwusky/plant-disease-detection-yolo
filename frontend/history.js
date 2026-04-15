@@ -25,11 +25,17 @@ function switchTab(tab) {
     }
 }
 
+// Global pagination variables
+let currentPage = 1;
+let totalPages = 1;
+let pageSize = 20;
+
 // Fetch history from backend
-async function loadHistory() {
+async function loadHistory(page = 1, size = 20) {
     const grid = document.getElementById('history-grid');
     const loading = document.getElementById('history-loading');
     const empty = document.getElementById('history-empty');
+    const pagination = document.getElementById('history-pagination');
     
     // Reset views
     grid.innerHTML = '';
@@ -37,14 +43,16 @@ async function loadHistory() {
     loading.classList.add('flex');
     empty.classList.add('hidden');
     empty.classList.remove('flex');
+    pagination.classList.add('hidden');
     
     try {
         const userId = localStorage.getItem('deviceUserId') || 'anonymous';
+        const offset = (page - 1) * size;
         
         // Detect if running locally without Nginx proxy
         const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-            ? `http://127.0.0.1:8000/history?user_id=${userId}` 
-            : `/api/history?user_id=${userId}`;
+            ? `http://127.0.0.1:8000/history?user_id=${userId}&limit=${size}&offset=${offset}` 
+            : `/api/history?user_id=${userId}&limit=${size}&offset=${offset}`;
             
         const response = await fetch(apiUrl);
         if (!response.ok) throw new Error("Failed to fetch history");
@@ -67,6 +75,11 @@ async function loadHistory() {
             }
             return;
         }
+        
+        // Update pagination variables
+        currentPage = page;
+        pageSize = size;
+        totalPages = Math.ceil(data.total / size);
         
         // Populate history items
         data.history.forEach(item => {
@@ -133,6 +146,9 @@ async function loadHistory() {
             grid.appendChild(card);
         });
         
+        // Update pagination
+        updatePagination();
+        
     } catch (error) {
         console.error('Error fetching history:', error);
         loading.classList.add('hidden');
@@ -145,4 +161,49 @@ async function loadHistory() {
             <p class="text-gray-500 text-sm mt-2">无法连接到服务器获取历史记录</p>
         `;
     }
+}
+
+// Update pagination UI
+function updatePagination() {
+    const pagination = document.getElementById('history-pagination');
+    if (!pagination) return;
+    
+    pagination.innerHTML = '';
+    
+    // Previous button
+    const prevButton = document.createElement('button');
+    prevButton.className = `px-3 py-1 rounded-md text-sm font-medium ${currentPage === 1 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`;
+    prevButton.textContent = '上一页';
+    prevButton.disabled = currentPage === 1;
+    if (currentPage > 1) {
+        prevButton.addEventListener('click', () => loadHistory(currentPage - 1, pageSize));
+    }
+    pagination.appendChild(prevButton);
+    
+    // Page numbers
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, startPage + 4);
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const pageButton = document.createElement('button');
+        pageButton.className = `px-3 py-1 mx-1 rounded-md text-sm font-medium ${i === currentPage ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`;
+        pageButton.textContent = i;
+        if (i !== currentPage) {
+            pageButton.addEventListener('click', () => loadHistory(i, pageSize));
+        }
+        pagination.appendChild(pageButton);
+    }
+    
+    // Next button
+    const nextButton = document.createElement('button');
+    nextButton.className = `px-3 py-1 rounded-md text-sm font-medium ${currentPage === totalPages ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`;
+    nextButton.textContent = '下一页';
+    nextButton.disabled = currentPage === totalPages;
+    if (currentPage < totalPages) {
+        nextButton.addEventListener('click', () => loadHistory(currentPage + 1, pageSize));
+    }
+    pagination.appendChild(nextButton);
+    
+    // Show pagination
+    pagination.classList.remove('hidden');
 }
